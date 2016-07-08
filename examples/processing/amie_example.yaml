@@ -1,0 +1,19 @@
+dsn: dbname=amiedb user=amie
+
+timeout: 30240
+
+mgmt_host: cluster-headnode01
+mgmt_user: admin
+# For this example, this is an external CLI that manages cluster user accounts
+mgmt_cmd: "/path/to/cluster_user_account_mgr -f /path/to/config_acct_xsede.yaml "
+resource: example.site.xsede
+
+# the following file must be writable by the amie user
+grid_mapfile: /path/to/shared/grid-mapfile
+
+slack_webhook_url: "https://hooks.slack.com/services/DUMMY/P04UL7S"
+slack_channel: "#example"
+slack_bot_username: "xsede-amie"
+slack_bot_emoji: ":xsede:"
+
+sacctmgr_user_options: "fairshare=100 qos=normal,long defaultqos=normal"
