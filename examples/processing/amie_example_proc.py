@@ -217,26 +217,48 @@ class ExampleSitePacketHandler(PacketHandler):
         return (pw.pw_name, person_id)
 
     def _add_dn_entry(self, data_in):
-        """Helper to add a user DN"""
+        """Helper to add a user DNs"""
         pw = pwd.getpwuid(int(data_in['PersonID']))
 
         # Authorize known user DNs
         dnlist = data_in.get('DnList')
-        LOGGER.info("_add_dn_entry: known PI DNs are %s", dnlist)
+        LOGGER.info("_add_dn_entry: known person DNs are %s", dnlist)
 
         grid_mapfile = self.settings['grid_mapfile']
 
         for dn in dnlist:
             cmd = 'grid-mapfile-add-entry -dn "%s" -ln %s -f "%s"' \
-                % (dn, pw.pw_name, grid_mapfile)
+                  % (dn, pw.pw_name, grid_mapfile)
             rc = self._exec_local(cmd)
             if rc:
                 raise ValueError('grid-mapfile-add-entry failed for user %s '
                                  'DN "%s" (mapfile=%s rc=%s)'
                                  % (pw.pw_name, dn, grid_mapfile, rc))
 
-        self.slack_msg_notification("GSI-SSH: successfully added %d DNs for user *%s*"
-                                    % (len(dnlist), pw.pw_name),
+        self.slack_msg_notification("GSI-SSH: successfully added %d DNs for "
+                                    "user *%s*" % (len(dnlist), pw.pw_name),
+                                    ":white_check_mark:")
+
+    def _delete_dn_entry(self, data_in):
+        """Helper to delete a user DNs"""
+        pw = pwd.getpwuid(int(data_in['PersonID']))
+
+        dnlist = data_in.get('DnList')
+        LOGGER.info("_delete_dn_entry: person DNs to delete are %s", dnlist)
+
+        grid_mapfile = self.settings['grid_mapfile']
+
+        for dn in dnlist:
+            cmd = 'grid-mapfile-delete-entry -dn "%s" -ln %s -f "%s"' \
+                   % (dn, pw.pw_name, grid_mapfile)
+            rc = self._exec_local(cmd)
+            if rc:
+                raise ValueError('grid-mapfile-delete-entry failed for user %s '
+                                 'DN "%s" (mapfile=%s rc=%s)'
+                                 % (pw.pw_name, dn, grid_mapfile, rc))
+
+        self.slack_msg_notification("GSI-SSH: successfully deleted %d DNs for "
+                                    "user *%s*" % (len(dnlist), pw.pw_name),
                                     ":white_check_mark:")
 
     def request_project_create(self, packet, data_in, data_out):
@@ -539,10 +561,28 @@ class ExampleSitePacketHandler(PacketHandler):
         # Not implemented
         raise PacketIgnoredException()
 
-    def notify_user_create(self, packet, data_in, data_out):
-        # Not implemented
-        raise PacketIgnoredException()
+    def request_user_modify(self, packet, data_in, data_out):
+        # request_user_modify: mandatory fields:
+        # - ActionType
+        # - PersonID
+        keys = ['ActionType', 'PersonID']
+        self.slack_amie_packet_notification(packet, data_in, keys,
+                                            ":writing_hand:")
 
+        if data_in['ActionType'] in ('add', 'replace'):
+            # From AMIE-XSEDE about 'replace': if the DnList tag is present,
+            # DNs listed must be added to the grid mapfile; DNs in the grid
+            # mapfile which are not listed must be preserved. If the DnList
+            # tag is not present, all DNs in the grid mapfile must be preserved.
+            self._add_dn_entry(data_in)
+
+        elif data_in['ActionType'] == 'delete':
+            self._delete_dn_entry(data_in)
+
+        # And reply Success
+        data_out['DetailCode'] = "1"
+        data_out['Message'] = "User account successfully updated"
+        data_out['StatusCode'] = "Success"
 
 def main():
     """main poller function: parse command line argument and poll AMIE DB"""

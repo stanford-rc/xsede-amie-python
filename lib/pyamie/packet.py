@@ -52,6 +52,7 @@ PACKET_REPLY_TYPE_NAME = {
     'notify_account_inactivate': 'inform_transaction_complete',
     'request_account_reactivate': 'notify_account_reactivate',
     'notify_account_reactivate': 'inform_transaction_complete',
+    'request_user_modify': 'inform_transaction_complete',
     'inform_transaction_complete': None}
 
 
