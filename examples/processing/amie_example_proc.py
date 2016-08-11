@@ -283,6 +283,12 @@ class ExampleSitePacketHandler(PacketHandler):
         keys = ['AllocationType', 'GrantNumber', 'PfosNumber', 'PiFirstName',
                 'PiLastName', 'PiOrganization', 'PiOrgCode', 'ResourceList',
                 'ServiceUnitsAllocated', 'StartDate', 'EndDate']
+        try:
+            project_title = data_in['ProjectTitle'].replace('"', '\\"').lower()
+            keys.append('ProjectTitle')
+        except KeyError:
+            project_title = None
+
         self.slack_amie_packet_notification(packet, data_in, keys,
                                             ":sports_medal:")
 
@@ -293,11 +299,8 @@ class ExampleSitePacketHandler(PacketHandler):
         # Create project group
         cmd = "%s --add-group %s --container xsede" % (self.settings['mgmt_cmd'],
                                                        group_name)
-        try:
-            project_title = data_in['ProjectTitle'].replace('"', '\\"').lower()
+        if project_title:
             cmd += ' --desc "%s"' % project_title
-        except KeyError:
-            pass
 
         rc = self._exec_mgmt(cmd)
         LOGGER.info("create group project returned %s", rc)
