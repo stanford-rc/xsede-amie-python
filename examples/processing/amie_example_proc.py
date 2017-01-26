@@ -284,23 +284,23 @@ class ExampleSitePacketHandler(PacketHandler):
 
         grid_mapfile = self.settings['grid_mapfile']
 
-        max_rc = 0
+        success = 0
         for dn in dnlist:
             cmd = 'grid-mapfile-delete-entry -dn "%s" -ln %s -f "%s"' \
                    % (dn, pw.pw_name, grid_mapfile)
             rc = self._exec_local(cmd)
-            max_rc = max(max_rc, rc)
             if rc:
                 msgfmt = 'GSI-SSH: grid-mapfile-delete-entry failed for user ' \
                          '%s DN "%s" (mapfile=%s rc=%s)'
                 self.slack_msg_notification(msgfmt % (pw.pw_name, dn,
                                                       grid_mapfile, rc),
                                             ":exclamation:")
+            else:
+                success += 1
 
-        if max_rc == 0:
+        if success > 0:
             self.slack_msg_notification("GSI-SSH: successfully deleted %d DNs "
-                                        "for user *%s*" % (len(dnlist),
-                                                           pw.pw_name),
+                                        "for user *%s*" % (success, pw.pw_name),
                                         ":white_check_mark:")
 
     def request_project_create(self, packet, data_in, data_out):
