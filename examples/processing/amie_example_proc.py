@@ -284,18 +284,24 @@ class ExampleSitePacketHandler(PacketHandler):
 
         grid_mapfile = self.settings['grid_mapfile']
 
+        max_rc = 0
         for dn in dnlist:
             cmd = 'grid-mapfile-delete-entry -dn "%s" -ln %s -f "%s"' \
                    % (dn, pw.pw_name, grid_mapfile)
             rc = self._exec_local(cmd)
+            max_rc = max(max_rc, rc)
             if rc:
-                raise ValueError('grid-mapfile-delete-entry failed for user %s '
-                                 'DN "%s" (mapfile=%s rc=%s)'
-                                 % (pw.pw_name, dn, grid_mapfile, rc))
+                msgfmt = 'GSI-SSH: grid-mapfile-delete-entry failed for user ' \
+                         '%s DN "%s" (mapfile=%s rc=%s)'
+                self.slack_msg_notification(msgfmt % (pw.pw_name, dn,
+                                                      grid_mapfile, rc),
+                                            ":exclamation:")
 
-        self.slack_msg_notification("GSI-SSH: successfully deleted %d DNs for "
-                                    "user *%s*" % (len(dnlist), pw.pw_name),
-                                    ":white_check_mark:")
+        if max_rc == 0:
+            self.slack_msg_notification("GSI-SSH: successfully deleted %d DNs "
+                                        "for user *%s*" % (len(dnlist),
+                                                           pw.pw_name),
+                                        ":white_check_mark:")
 
     def request_project_create(self, packet, data_in, data_out):
         # request_project_create: mandatory fields:
@@ -332,18 +338,25 @@ class ExampleSitePacketHandler(PacketHandler):
         project_id = "P-%s" % data_in['GrantNumber']
         group_name = project_id.lower()
 
-        # Create project group
-        cmd = "%s --add-group %s --container xsede" % (self.settings['mgmt_cmd'],
-                                                       group_name)
-        if project_title:
-            cmd += ' --desc "%s"' % project_title
+        if data_in['AllocationType'] == 'extension':
+            self.slack_msg_notification("Received extension for Grant %s"
+                                        % data_in['GrantNumber'],
+                                        ":date:")
+            uid = data_in['PiPersonID']
+            login = pwd.getpwuid(int(uid)).pw_name
+        else:
+            # Create project group
+            cmd = "%s --add-group %s --container xsede" % (self.settings['mgmt_cmd'],
+                                                           group_name)
+            if project_title:
+                cmd += ' --desc "%s"' % project_title
 
-        rc = self._exec_mgmt(cmd)
-        LOGGER.info("create group project returned %s", rc)
-        if rc:
-            raise ValueError("Failed to create group project (rc=%s)" % rc)
+            rc = self._exec_mgmt(cmd)
+            LOGGER.info("create group project returned %s", rc)
+            if rc:
+                raise ValueError("Failed to create group project (rc=%s)" % rc)
 
-        login, uid = self._add_user(data_in, group_name, is_pi=True)
+            login, uid = self._add_user(data_in, group_name, is_pi=True)
 
         # notify_project_create: mandatory fields
         # - AccountActivityTime
