@@ -338,11 +338,17 @@ class ExampleSitePacketHandler(PacketHandler):
         project_id = "P-%s" % data_in['GrantNumber']
         group_name = project_id.lower()
 
+        in_project_id = data_in.get('ProjectID')
+        if in_project_id:
+            LOGGER.info("request_project_create: ProjectID=%s project_id=%s",
+                        in_project_id, project_id)
+            assert in_project_id[0] == project_id
+
         # SU
         project_su = int(data_in['ServiceUnitsAllocated'])
         alloc_type = data_in['AllocationType']
 
-        if alloc_type == 'extension':
+        if in_project_id and alloc_type == 'extension':
             self.slack_msg_notification("Received *extension* for Grant %s"
                                         % data_in['GrantNumber'],
                                         ":date:")
@@ -350,7 +356,8 @@ class ExampleSitePacketHandler(PacketHandler):
             login = pwd.getpwuid(int(uid)).pw_name
 
 
-        elif alloc_type in ('transfer', 'supplement', 'advance'):
+        elif in_project_id and alloc_type in ('transfer', 'supplement',
+                                              'advance', 'renewal'):
             self.slack_msg_notification("Received *%s* for Grant %s"
                                         % (alloc_type, data_in['GrantNumber']),
                                         ":fuelpump:")
