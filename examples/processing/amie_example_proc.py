@@ -338,12 +338,71 @@ class ExampleSitePacketHandler(PacketHandler):
         project_id = "P-%s" % data_in['GrantNumber']
         group_name = project_id.lower()
 
-        if data_in['AllocationType'] == 'extension':
-            self.slack_msg_notification("Received extension for Grant %s"
+        # SU
+        project_su = int(data_in['ServiceUnitsAllocated'])
+        alloc_type = data_in['AllocationType']
+
+        if alloc_type == 'extension':
+            self.slack_msg_notification("Received *extension* for Grant %s"
                                         % data_in['GrantNumber'],
                                         ":date:")
             uid = data_in['PiPersonID']
             login = pwd.getpwuid(int(uid)).pw_name
+
+
+        elif alloc_type in ('transfer', 'supplement', 'advance'):
+            self.slack_msg_notification("Received *%s* for Grant %s"
+                                        % (alloc_type, data_in['GrantNumber']),
+                                        ":fuelpump:")
+            uid = data_in['PiPersonID']
+            login = pwd.getpwuid(int(uid)).pw_name
+
+            #
+            # NOTE: here you need to implement a way to retrieve current project SUs
+            #
+
+            ## Get current project SUs
+            #task = task_self()
+            #cmd = 'sacctmgr -p list assoc tree account=%s format=Account,GrpTRESMins' % group_name
+            #task.run(command=cmd, key='sacctmgr')
+            #output = str(task.key_buffer('sacctmgr'))
+            #LOGGER.info("sacctmgr: %s", output)
+            #LOGGER.info("sacctmgr retcode = %s", task.max_retcode())
+            #if task.max_retcode() != 0:
+            #    raise ValueError("sacctmgr failed with error %s" % task.max_retcode())
+            #
+            #gpu_mins = 0
+            #for line in output.splitlines():
+            #    if line.startswith('p-'):
+            #        project, gres = line.split('|', 1)
+            #        gpu_mins = int(re.search(r'gpu=(\d+)', gres).group(1))
+            #        break
+            #
+            #if not gpu_mins:
+            #    raise ValueError("sacctmgr failed to get GrpTRESMins for account %s" % group_name)
+
+            ## get additional SUs
+            #assert project_su > 0 # only positive transfer supported for now
+            ## add already allocated SUs
+            #project_su += gpu_mins / 60
+            ## recompute allocation (with XStream gpu/cpu ratio)
+            #gpu_mins = 60 * project_su
+            #cpu_mins = (20 * gpu_mins) / 16
+
+            #cmd = 'sacctmgr -i update account %s set ' \
+            #      'GrpTRESMins=cpu=%d,gres/gpu=%d' % (group_name, cpu_mins,
+            #                                          gpu_mins)
+            #task.run(command=cmd, key='sacctmgr')
+            #LOGGER.info("%s", str(task.key_buffer('sacctmgr')))
+            #LOGGER.info("sacctmgr retcode = %s", task.max_retcode())
+            #if task.max_retcode() != 0:
+            #    raise ValueError("sacctmgr failed with error %s" % task.max_retcode())
+            #
+            #slack_msg = "ServiceUnitsAllocated for Grant %s (account %s) successfully to %d"
+            #self.slack_msg_notification(slack_msg % (data_in['GrantNumber'],
+            #                                         group_name, project_su),
+            #                            ":fuelpump:")
+            raise NotImplementedError('You need to implement project transfer/suppl/advance')
         else:
             # Create project group
             cmd = "%s --add-group %s --container xsede" % (self.settings['mgmt_cmd'],
@@ -381,7 +440,7 @@ class ExampleSitePacketHandler(PacketHandler):
         data_out['ProjectID'] = project_id
         data_out['ProjectTitle'] = data_in['ProjectTitle']
         data_out['ResourceList'] = self.settings['resource']
-        data_out['ServiceUnitsAllocated'] = data_in['ServiceUnitsAllocated']
+        data_out['ServiceUnitsAllocated'] = "%d" % project_su
         data_out['StartDate'] = data_in['StartDate']
 
         for val in data_in.get('PiDnList'):
@@ -521,7 +580,7 @@ class ExampleSitePacketHandler(PacketHandler):
         task = task_self()
         group_name = data_in['ProjectID'].lower()
 
-        # GrpTRESMins to 0 will inactivate this account in SLURM
+        # GrpSubmitJobs to -1 will re-activate this account in SLURM
         cmd = 'sacctmgr -i update account %s set GrpSubmitJobs=-1' % group_name
         rc = self._exec_local(cmd)
         LOGGER.info("sacctmgr returned %s", rc)
