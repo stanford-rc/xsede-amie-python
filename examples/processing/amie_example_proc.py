@@ -108,12 +108,15 @@ class ExampleSitePacketHandler(PacketHandler):
         else:
             key_suffix = 'User'
 
+        global_id_key = key_suffix + 'GlobalID'
         person_id_key = key_suffix + 'PersonID'
         email_key = key_suffix + 'Email'
         firstname_key = key_suffix + 'FirstName'
         middlename_key = key_suffix + 'MiddleName'
         lastname_key = key_suffix + 'LastName'
         reqloginlist_key = key_suffix + 'RequestedLoginList'
+
+        login = None
 
         if data_in.getone(person_id_key):
             # PI is already known
@@ -125,9 +128,38 @@ class ExampleSitePacketHandler(PacketHandler):
             self.slack_msg_notification("Found existing login *%s* for known PersonID %s"
                                         % (login, person_id),
                                         ":information_source:")
+        if not login:
+            # Check for GlobalID
+            if data_in.getone(global_id_key):
+                globalid = data_in[global_id_key]
+                #
+                # NOTE: You need to implement a way to retrieve the PersonID from GlobalID!
+                # We use LDAP for that at Stanford, but you could use a DB.
+                #
+                #person_id = ldap_find_globalid(self.settings, globalid)
+                #if person_id:
+                #    LOGGER.warning("%s %s is already known locally (%d)",
+                #                   global_id_key, globalid, person_id)
+                #    login = pwd.getpwuid(person_id).pw_name # may raise KeyError if not found
+                #    LOGGER.warning("Found login %s for known user %s", login, person_id)
+                #
+                #    self.slack_msg_notification("Found existing login *%s* (%d) for known GlobalID %s"
+                #                                % (login, person_id, globalid),
+                #                                ":information_source:")
+                raise NotImplementedError('You need to implement GlobalID to PersonID mapping!')
+
+        if login:
+            cmd = '%s --mod-user %s -G %s' % (self.settings['mgmt_cmd'], login,
+                                              group_name)
+            if self._exec_mgmt(cmd) != 0:
+                raise ValueError("failure when adding supplementary group %s "
+                                 "for user %s" % (group_name, login))
+
+            LOGGER.info("successfully added user %s to supplementary group %s",
+                        login, group_name)
+
         else:
-            # New PI
-            login = None
+            # New PI/User
             firstname = data_in[firstname_key]
             lastname = data_in[lastname_key]
 
@@ -150,9 +182,11 @@ class ExampleSitePacketHandler(PacketHandler):
                     if not login_candidate:
                         continue
                     try_login = "xs-%s" % login_candidate
-                    # NOTE: this is very specific to XStream and cannot be reused as is
-                    cmd = '%s --add-user %s --group %s --gecos "%s" --mail "%s"' % \
-                          (self.settings['mgmt_cmd'], try_login, group_name, geico, email)
+                    # NOTE: this is very specific to XStream and cannot be reused as is.
+                    # We store the XDCDB GlobalID in the LDAP description.
+                    desc = "XDCDBGlobalID=%s" % data_in.getone(global_id_key)
+                    cmd = '%s --add-user %s --group %s --gecos "%s" --mail "%s" --desc "%s"' % \
+                          (self.settings['mgmt_cmd'], try_login, group_name, geico, email, desc)
                     if self._exec_mgmt(cmd) == 0:
                         login = try_login
                         break
@@ -167,9 +201,11 @@ class ExampleSitePacketHandler(PacketHandler):
                     try:
                         idx = login_sites.index(siteref)
                         try_login = "xs-%s" % login_candidates[idx]
-                        # NOTE: this is very specific to XStream and cannot be reused as is
-                        cmd = '%s --add-user %s --group %s --gecos "%s" --mail "%s"' % \
-                              (self.settings['mgmt_cmd'], try_login, group_name, geico, email)
+                        # NOTE: this is very specific to XStream and cannot be reused as is.
+                        # We store the XDCDB GlobalID in the LDAP description.
+                        desc = "XDCDBGlobalID=%s" % data_in.getone(global_id_key)
+                        cmd = '%s --add-user %s --group %s --gecos "%s" --mail "%s" --desc "%s"' % \
+                              (self.settings['mgmt_cmd'], try_login, group_name, geico, email, desc)
                         if self._exec_mgmt(cmd) == 0:
                             login = try_login
                             break
@@ -182,7 +218,7 @@ class ExampleSitePacketHandler(PacketHandler):
         pw = pwd.getpwnam(login)
         person_id = pw.pw_uid
 
-        LOGGER.info("created user account: %s uid %s", login, person_id)
+        LOGGER.info("user account: %s uid %s", login, person_id)
 
         # add user to project in SLURM
         cmd = "sacctmgr -i add user %s account=%s %s" % (login, group_name,
